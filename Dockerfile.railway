@@ -35,11 +35,46 @@ COPY crates/zeroclaw-macros/ crates/zeroclaw-macros/
 COPY crates/zeroclaw-tool-call-parser/ crates/zeroclaw-tool-call-parser/
 COPY crates/aardvark-sys/ crates/aardvark-sys/
 
-# Create stub crates for optional dependencies
-RUN mkdir -p crates/robot-kit/src && echo "fn main() {}" > crates/robot-kit/src/main.rs
-RUN mkdir -p crates/zeroclaw-tui/src && echo "fn main() {}" > crates/zeroclaw-tui/src/main.rs
-RUN mkdir -p crates/zeroclaw-plugins/src && echo "fn main() {}" > crates/zeroclaw-plugins/src/main.rs
-RUN mkdir -p crates/zeroclaw-hardware/src && echo "fn main() {}" > crates/zeroclaw-hardware/src/main.rs
+# Create stub crates for optional dependencies (they're referenced in workspace but not needed for minimal build)
+RUN mkdir -p crates/robot-kit/src && \
+    echo "[package]" > crates/robot-kit/Cargo.toml && \
+    echo 'name = "zeroclaw-robot-kit"' >> crates/robot-kit/Cargo.toml && \
+    echo 'version = "0.1.0"' >> crates/robot-kit/Cargo.toml && \
+    echo 'edition = "2024"' >> crates/robot-kit/Cargo.toml && \
+    echo '[[bin]]' >> crates/robot-kit/Cargo.toml && \
+    echo 'name = "robot-kit"' >> crates/robot-kit/Cargo.toml && \
+    echo 'path = "src/main.rs"' >> crates/robot-kit/Cargo.toml && \
+    echo "fn main() {}" > crates/robot-kit/src/main.rs
+
+RUN mkdir -p crates/zeroclaw-tui/src && \
+    echo "[package]" > crates/zeroclaw-tui/Cargo.toml && \
+    echo 'name = "zeroclaw-tui"' >> crates/zeroclaw-tui/Cargo.toml && \
+    echo 'version = "0.6.9"' >> crates/zeroclaw-tui/Cargo.toml && \
+    echo 'edition = "2024"' >> crates/zeroclaw-tui/Cargo.toml && \
+    echo '[[bin]]' >> crates/zeroclaw-tui/Cargo.toml && \
+    echo 'name = "zeroclaw-tui"' >> crates/zeroclaw-tui/Cargo.toml && \
+    echo 'path = "src/main.rs"' >> crates/zeroclaw-tui/Cargo.toml && \
+    echo "fn main() {}" > crates/zeroclaw-tui/src/main.rs
+
+RUN mkdir -p crates/zeroclaw-plugins/src && \
+    echo "[package]" > crates/zeroclaw-plugins/Cargo.toml && \
+    echo 'name = "zeroclaw-plugins"' >> crates/zeroclaw-plugins/Cargo.toml && \
+    echo 'version = "0.6.9"' >> crates/zeroclaw-plugins/Cargo.toml && \
+    echo 'edition = "2024"' >> crates/zeroclaw-plugins/Cargo.toml && \
+    echo '[[bin]]' >> crates/zeroclaw-plugins/Cargo.toml && \
+    echo 'name = "zeroclaw-plugins"' >> crates/zeroclaw-plugins/Cargo.toml && \
+    echo 'path = "src/main.rs"' >> crates/zeroclaw-plugins/Cargo.toml && \
+    echo "fn main() {}" > crates/zeroclaw-plugins/src/main.rs
+
+RUN mkdir -p crates/zeroclaw-hardware/src && \
+    echo "[package]" > crates/zeroclaw-hardware/Cargo.toml && \
+    echo 'name = "zeroclaw-hardware"' >> crates/zeroclaw-hardware/Cargo.toml && \
+    echo 'version = "0.6.9"' >> crates/zeroclaw-hardware/Cargo.toml && \
+    echo 'edition = "2024"' >> crates/zeroclaw-hardware/Cargo.toml && \
+    echo '[[bin]]' >> crates/zeroclaw-hardware/Cargo.toml && \
+    echo 'name = "zeroclaw-hardware"' >> crates/zeroclaw-hardware/Cargo.toml && \
+    echo 'path = "src/main.rs"' >> crates/zeroclaw-hardware/Cargo.toml && \
+    echo "fn main() {}" > crates/zeroclaw-hardware/src/main.rs
 
 # Build only zeroclawlabs with agent-runtime (includes telegram)
 RUN cargo build --release --locked -p zeroclawlabs --no-default-features --features "agent-runtime"

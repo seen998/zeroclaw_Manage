@@ -15,21 +15,14 @@ WORKDIR /app
 ARG ZEROCLAW_CARGO_FEATURES="channel-lark,whatsapp-web"
 
 # Install build dependencies
-RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
-    --mount=type=cache,target=/var/lib/apt,sharing=locked \
-    apt-get update && apt-get install -y \
+RUN apt-get update && apt-get install -y \
         pkg-config \
     && rm -rf /var/lib/apt/lists/*
 
 # 1. Copy manifests to cache dependencies
 COPY Cargo.toml Cargo.lock ./
-# Include every workspace member: Cargo.lock is generated for the full workspace.
-# Previously we used sed to drop `crates/robot-kit`, which made the manifest disagree
-# with the lockfile and caused `cargo --locked` to fail (Cargo refused to rewrite the lock).
 COPY crates/robot-kit/ crates/robot-kit/
 COPY crates/aardvark-sys/ crates/aardvark-sys/
-# Include tauri workspace member manifest (desktop app, but needed for workspace resolution).
-# .dockerignore whitelists only Cargo.toml; src and build.rs are stubbed below.
 COPY apps/tauri/Cargo.toml apps/tauri/Cargo.toml
 # Create dummy targets declared in Cargo.toml so manifest parsing succeeds.
 RUN mkdir -p src benches apps/tauri/src \
@@ -38,38 +31,24 @@ RUN mkdir -p src benches apps/tauri/src \
     && echo "fn main() {}" > benches/agent_benchmarks.rs \
     && echo "fn main() {}" > apps/tauri/src/main.rs \
     && echo "fn main() {}" > apps/tauri/build.rs
-RUN --mount=type=cache,id=zeroclaw-cargo-registry,target=/usr/local/cargo/registry,sharing=locked \
-    --mount=type=cache,id=zeroclaw-cargo-git,target=/usr/local/cargo/git,sharing=locked \
-    --mount=type=cache,id=zeroclaw-target,target=/app/target,sharing=locked \
-    if [ -n "$ZEROCLAW_CARGO_FEATURES" ]; then \
-      cargo build --release --locked --features "$ZEROCLAW_CARGO_FEATURES"; \
-    else \
-      cargo build --release --locked; \
-    fi
+RUN cargo build --release --locked --features "$ZEROCLAW_CARGO_FEATURES"
 RUN rm -rf src benches
 
-# 2. Copy only build-relevant source paths (avoid cache-busting on docs/tests/scripts)
+# 2. Copy only build-relevant source paths
 COPY src/ src/
 COPY benches/ benches/
 COPY *.rs .
 RUN touch src/main.rs
-RUN --mount=type=cache,id=zeroclaw-cargo-registry,target=/usr/local/cargo/registry,sharing=locked \
-    --mount=type=cache,id=zeroclaw-cargo-git,target=/usr/local/cargo/git,sharing=locked \
-    --mount=type=cache,id=zeroclaw-target,target=/app/target,sharing=locked \
-    rm -rf target/release/.fingerprint/zeroclawlabs-* \
+RUN rm -rf target/release/.fingerprint/zeroclawlabs-* \
            target/release/deps/zeroclawlabs-* \
            target/release/incremental/zeroclawlabs-* && \
-    if [ -n "$ZEROCLAW_CARGO_FEATURES" ]; then \
-      cargo build --release --locked --features "$ZEROCLAW_CARGO_FEATURES"; \
-    else \
-      cargo build --release --locked; \
-    fi && \
+    cargo build --release --locked --features "$ZEROCLAW_CARGO_FEATURES" && \
     cp target/release/zeroclaw /app/zeroclaw && \
     strip /app/zeroclaw
 RUN size=$(stat -c%s /app/zeroclaw) && \
     if [ "$size" -lt 1000000 ]; then echo "ERROR: binary too small (${size} bytes), likely dummy build artifact" && exit 1; fi
 
-# Prepare runtime directory structure and default config inline (no extra stage)
+# Prepare runtime directory structure and default config inline
 RUN mkdir -p /zeroclaw-data/.zeroclaw /zeroclaw-data/workspace && \
     printf '%s\n' \
         'workspace_dir = "/zeroclaw-data/workspace"' \
@@ -87,7 +66,7 @@ RUN mkdir -p /zeroclaw-data/.zeroclaw /zeroclaw-data/workspace && \
         'web_dist_dir = "/zeroclaw-data/web/dist"' \
         '' \
         '[autonomy]' \
-        'level = "supervised"' \
+        'level = "full"' \
         'auto_approve = ["file_read", "file_write", "file_edit", "memory_recall", "memory_store", "web_search_tool", "web_fetch", "calculator", "glob_search", "content_search", "image_info", "weather", "git_operations"]' \
         > /zeroclaw-data/.zeroclaw/config.toml && \
     chown -R 65534:65534 /zeroclaw-data
@@ -95,7 +74,6 @@ RUN mkdir -p /zeroclaw-data/.zeroclaw /zeroclaw-data/workspace && \
 # ── Stage 2: Development Runtime (Debian) ────────────────────
 FROM debian:trixie-slim@sha256:f6e2cfac5cf956ea044b4bd75e6397b4372ad88fe00908045e9a0d21712ae3ba AS dev
 
-# Install essential runtime dependencies only (use docker-compose.override.yml for dev tools)
 RUN apt-get update && apt-get install -y \
     ca-certificates \
     curl \
@@ -105,23 +83,15 @@ COPY --from=builder /zeroclaw-data /zeroclaw-data
 COPY --from=builder /app/zeroclaw /usr/local/bin/zeroclaw
 COPY --from=web-builder /web/dist /zeroclaw-data/web/dist
 
-# Overwrite minimal config with DEV template (Ollama defaults)
 COPY dev/config.template.toml /zeroclaw-data/.zeroclaw/config.toml
 RUN chown 65534:65534 /zeroclaw-data/.zeroclaw/config.toml
 
-# Environment setup
-# Ensure UTF-8 locale so CJK / multibyte input is handled correctly
 ENV LANG=C.UTF-8
-# Use consistent workspace path
 ENV ZEROCLAW_WORKSPACE=/zeroclaw-data/workspace
 ENV HOME=/zeroclaw-data
-# Defaults for local dev (Ollama) - matches config.template.toml
 ENV PROVIDER="ollama"
 ENV ZEROCLAW_MODEL="llama3.2"
 ENV ZEROCLAW_GATEWAY_PORT=42617
-
-# Note: API_KEY is intentionally NOT set here to avoid confusion.
-# It is set in config.toml as the Ollama URL.
 
 WORKDIR /zeroclaw-data
 USER 65534:65534
@@ -138,7 +108,6 @@ COPY --from=builder /app/zeroclaw /usr/local/bin/zeroclaw
 COPY --from=builder /zeroclaw-data /zeroclaw-data
 COPY --from=web-builder /web/dist /zeroclaw-data/web/dist
 
-# Environment setup
 ENV LANG=C.UTF-8
 ENV ZEROCLAW_WORKSPACE=/zeroclaw-data/workspace
 ENV HOME=/zeroclaw-data

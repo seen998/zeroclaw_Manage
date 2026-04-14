@@ -10869,6 +10869,19 @@ impl Config {
             }
         }
 
+        // Telegram allowed users: ZEROCLAW_TELEGRAM_ALLOWED_USERS
+        if let Ok(users) = std::env::var("ZEROCLAW_TELEGRAM_ALLOWED_USERS") {
+            if !users.is_empty() {
+                let user_list: Vec<String> = users.split(',')
+                    .map(|s| s.trim().to_string())
+                    .filter(|s| !s.is_empty())
+                    .collect();
+                if let Some(ref mut tg) = self.channels_config.telegram {
+                    tg.allowed_users = user_list;
+                }
+            }
+        }
+
         if self.conversational_ai.enabled {
             tracing::warn!(
                 "conversational_ai.enabled = true but conversational AI features are not yet \

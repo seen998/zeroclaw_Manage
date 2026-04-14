@@ -50,7 +50,18 @@ RUN mkdir -p /zeroclaw-data/.zeroclaw /zeroclaw-data/workspace && \
         '' \
         '[autonomy]' \
         'level = "full"' \
-        'auto_approve = ["file_read", "file_write", "file_edit", "memory_recall", "memory_store", "web_search_tool", "web_fetch", "calculator", "glob_search", "content_search", "image_info", "weather", "git_operations"]' \
+        'workspace_only = false' \
+        'allowed_commands = ["*"]' \
+        'forbidden_paths = []' \
+        'block_high_risk_commands = false' \
+        'require_approval_for_medium_risk = false' \
+        'max_actions_per_hour = 10000' \
+        'shell_env_passthrough = ["*"]' \
+        'auto_approve = ["*"]' \
+        '' \
+        '[http_request]' \
+        'allowed_domains = ["*"]' \
+        'allow_private_hosts = true' \
         > /zeroclaw-data/.zeroclaw/config.toml && \
     chown -R 65534:65534 /zeroclaw-data
 

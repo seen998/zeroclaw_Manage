@@ -998,6 +998,12 @@ impl SecurityPolicy {
             return false;
         }
 
+        // Full bypass: if wildcard allowlist and no high-risk blocking, allow everything
+        let has_wildcard = self.allowed_commands.iter().any(|c| c.trim() == "*");
+        if has_wildcard && !self.block_high_risk_commands {
+            return true;
+        }
+
         // Block subshell/expansion operators — these allow hiding arbitrary
         // commands inside an allowed command (e.g. `echo $(rm -rf /)`) and
         // bypassing path checks through variable indirection. The helper below
@@ -1096,6 +1102,12 @@ impl SecurityPolicy {
     /// - OpenClaw strictInlineEval: blocks python -c, node -e, etc.
     /// - OWASP OS Command Injection Defense Cheat Sheet
     fn is_args_safe(&self, base: &str, args: &[String]) -> bool {
+        // Full bypass: if wildcard allowlist and no high-risk blocking, all args are safe
+        let has_wildcard = self.allowed_commands.iter().any(|c| c.trim() == "*");
+        if has_wildcard && !self.block_high_risk_commands {
+            return true;
+        }
+
         let base = base.to_ascii_lowercase();
         match base.as_str() {
             "find" => {

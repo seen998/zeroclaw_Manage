@@ -1,6 +1,6 @@
-# ZeroClaw Railway Deployment
+# syntax=docker/dockerfile:1.7
 
-# Stage 1: Build Web UI
+# ── Stage 0: Frontend build ─────────────────────────────────────
 FROM node:22-alpine AS web-builder
 WORKDIR /web
 COPY web/package.json web/package-lock.json* ./
@@ -8,113 +8,138 @@ RUN npm ci --ignore-scripts 2>/dev/null || npm install --ignore-scripts
 COPY web/ .
 RUN npm run build
 
-# Stage 2: Build Rust Binary
-FROM rust:1.94-slim-bookworm AS builder
+# ── Stage 1: Build ────────────────────────────────────────────
+FROM rust:1.94-slim@sha256:da9dab7a6b8dd428e71718402e97207bb3e54167d37b5708616050b1e8f60ed6 AS builder
 
-WORKDIR /build
+WORKDIR /app
+ARG ZEROCLAW_CARGO_FEATURES="channel-lark,whatsapp-web"
 
-# Install build dependencies
+# Install build dependencies - REMOVED BUILDKIT CACHE MOUNT
 RUN apt-get update && apt-get install -y \
-    pkg-config \
-    libssl-dev \
+        pkg-config \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy manifests
+# 1. Copy manifests to cache dependencies
 COPY Cargo.toml Cargo.lock ./
-COPY src/ src/
-COPY crates/zeroclaw-api/ crates/zeroclaw-api/
-COPY crates/zeroclaw-config/ crates/zeroclaw-config/
-COPY crates/zeroclaw-providers/ crates/zeroclaw-providers/
-COPY crates/zeroclaw-memory/ crates/zeroclaw-memory/
-COPY crates/zeroclaw-runtime/ crates/zeroclaw-runtime/
-COPY crates/zeroclaw-tools/ crates/zeroclaw-tools/
-COPY crates/zeroclaw-channels/ crates/zeroclaw-channels/
-COPY crates/zeroclaw-infra/ crates/zeroclaw-infra/
-COPY crates/zeroclaw-gateway/ crates/zeroclaw-gateway/
-COPY crates/zeroclaw-macros/ crates/zeroclaw-macros/
-COPY crates/zeroclaw-tool-call-parser/ crates/zeroclaw-tool-call-parser/
+COPY crates/robot-kit/ crates/robot-kit/
 COPY crates/aardvark-sys/ crates/aardvark-sys/
+COPY apps/tauri/Cargo.toml apps/tauri/Cargo.toml
+# Create dummy targets declared in Cargo.toml so manifest parsing succeeds.
+RUN mkdir -p src benches apps/tauri/src \
+    && echo "fn main() {}" > src/main.rs \
+    && echo "" > src/lib.rs \
+    && echo "fn main() {}" > benches/agent_benchmarks.rs \
+    && echo "fn main() {}" > apps/tauri/src/main.rs \
+    && echo "fn main() {}" > apps/tauri/build.rs
+# REMOVED BUILDKIT CACHE MOUNT
+RUN cargo build --release --locked --features "$ZEROCLAW_CARGO_FEATURES"
+RUN rm -rf src benches
 
-# Create stub crates for optional dependencies (they're referenced in workspace but not needed for minimal build)
-RUN mkdir -p crates/robot-kit/src && \
-    echo "[package]" > crates/robot-kit/Cargo.toml && \
-    echo 'name = "zeroclaw-robot-kit"' >> crates/robot-kit/Cargo.toml && \
-    echo 'version = "0.1.0"' >> crates/robot-kit/Cargo.toml && \
-    echo 'edition = "2024"' >> crates/robot-kit/Cargo.toml && \
-    echo '[[bin]]' >> crates/robot-kit/Cargo.toml && \
-    echo 'name = "robot-kit"' >> crates/robot-kit/Cargo.toml && \
-    echo 'path = "src/main.rs"' >> crates/robot-kit/Cargo.toml && \
-    echo "fn main() {}" > crates/robot-kit/src/main.rs
+# 2. Copy only build-relevant source paths (avoid cache-busting on docs/tests/scripts)
+COPY src/ src/
+COPY benches/ benches/
+COPY *.rs .
+RUN touch src/main.rs
+# REMOVED BUILDKIT CACHE MOUNT - combine commands
+RUN rm -rf target/release/.fingerprint/zeroclawlabs-* \
+           target/release/deps/zeroclawlabs-* \
+           target/release/incremental/zeroclawlabs-* && \
+    cargo build --release --locked --features "$ZEROCLAW_CARGO_FEATURES" && \
+    cp target/release/zeroclaw /app/zeroclaw && \
+    strip /app/zeroclaw
+RUN size=$(stat -c%s /app/zeroclaw) && \
+    if [ "$size" -lt 1000000 ]; then echo "ERROR: binary too small (${size} bytes), likely dummy build artifact" && exit 1; fi
 
-RUN mkdir -p crates/zeroclaw-tui/src && \
-    echo "[package]" > crates/zeroclaw-tui/Cargo.toml && \
-    echo 'name = "zeroclaw-tui"' >> crates/zeroclaw-tui/Cargo.toml && \
-    echo 'version = "0.6.9"' >> crates/zeroclaw-tui/Cargo.toml && \
-    echo 'edition = "2024"' >> crates/zeroclaw-tui/Cargo.toml && \
-    echo '[[bin]]' >> crates/zeroclaw-tui/Cargo.toml && \
-    echo 'name = "zeroclaw-tui"' >> crates/zeroclaw-tui/Cargo.toml && \
-    echo 'path = "src/main.rs"' >> crates/zeroclaw-tui/Cargo.toml && \
-    echo "fn main() {}" > crates/zeroclaw-tui/src/main.rs
+# Prepare runtime directory structure and default config inline (no extra stage)
+RUN mkdir -p /zeroclaw-data/.zeroclaw /zeroclaw-data/workspace && \
+    printf '%s\n' \
+        'workspace_dir = "/zeroclaw-data/workspace"' \
+        'config_path = "/zeroclaw-data/.zeroclaw/config.toml"' \
+        'api_key = ""' \
+        'default_provider = "openrouter"' \
+        'default_model = "anthropic/claude-sonnet-4-20250514"' \
+        'default_temperature = 0.7' \
+        '' \
+        '[gateway]' \
+        'port = 42617' \
+        'host = "[::]"' \
+        'allow_public_bind = true' \
+        'require_pairing = false' \
+        'web_dist_dir = "/zeroclaw-data/web/dist"' \
+        '' \
+        '[autonomy]' \
+        'level = "full"' \
+        'auto_approve = ["file_read", "file_write", "file_edit", "memory_recall", "memory_store", "web_search_tool", "web_fetch", "calculator", "glob_search", "content_search", "image_info", "weather", "git_operations"]' \
+        > /zeroclaw-data/.zeroclaw/config.toml && \
+    chown -R 65534:65534 /zeroclaw-data
 
-RUN mkdir -p crates/zeroclaw-plugins/src && \
-    echo "[package]" > crates/zeroclaw-plugins/Cargo.toml && \
-    echo 'name = "zeroclaw-plugins"' >> crates/zeroclaw-plugins/Cargo.toml && \
-    echo 'version = "0.6.9"' >> crates/zeroclaw-plugins/Cargo.toml && \
-    echo 'edition = "2024"' >> crates/zeroclaw-plugins/Cargo.toml && \
-    echo '[[bin]]' >> crates/zeroclaw-plugins/Cargo.toml && \
-    echo 'name = "zeroclaw-plugins"' >> crates/zeroclaw-plugins/Cargo.toml && \
-    echo 'path = "src/main.rs"' >> crates/zeroclaw-plugins/Cargo.toml && \
-    echo "fn main() {}" > crates/zeroclaw-plugins/src/main.rs
+# ── Stage 2: Development Runtime (Debian) ────────────────────
+FROM debian:trixie-slim@sha256:f6e2cfac5cf956ea044b4bd75e6397b4372ad88fe00908045e9a0d21712ae3ba AS dev
 
-RUN mkdir -p crates/zeroclaw-hardware/src && \
-    echo "[package]" > crates/zeroclaw-hardware/Cargo.toml && \
-    echo 'name = "zeroclaw-hardware"' >> crates/zeroclaw-hardware/Cargo.toml && \
-    echo 'version = "0.6.9"' >> crates/zeroclaw-hardware/Cargo.toml && \
-    echo 'edition = "2024"' >> crates/zeroclaw-hardware/Cargo.toml && \
-    echo '[[bin]]' >> crates/zeroclaw-hardware/Cargo.toml && \
-    echo 'name = "zeroclaw-hardware"' >> crates/zeroclaw-hardware/Cargo.toml && \
-    echo 'path = "src/main.rs"' >> crates/zeroclaw-hardware/Cargo.toml && \
-    echo "fn main() {}" > crates/zeroclaw-hardware/src/main.rs
+RUN apt-get update && apt-get install -y \
+    ca-certificates \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
 
-# Build only zeroclawlabs with agent-runtime (includes telegram)
-RUN cargo build --release --locked -p zeroclawlabs --no-default-features --features "agent-runtime"
+COPY --from=builder /zeroclaw-data /zeroclaw-data
+COPY --from=builder /app/zeroclaw /usr/local/bin/zeroclaw
+COPY --from=web-builder /web/dist /zeroclaw-data/web/dist
 
-# Create runtime directory and config
-RUN mkdir -p /zeroclaw-data/.zeroclaw /zeroclaw-data/workspace /zeroclaw-data/web/dist
-RUN printf '%s\n' \
-    'workspace_dir = "/zeroclaw-data/workspace"' \
-    'config_path = "/zeroclaw-data/.zeroclaw/config.toml"' \
-    'default_provider = "openrouter"' \
-    'default_model = "anthropic/claude-sonnet-4-20250514"' \
-    'default_temperature = 0.7' \
-    '' \
-    '[gateway]' \
-    'port = 42617' \
-    'host = "[::]"' \
-    'allow_public_bind = true' \
-    'require_pairing = false' \
-    'web_dist_dir = "/zeroclaw-data/web/dist"' \
-    > /zeroclaw-data/.zeroclaw/config.toml
+COPY dev/config.template.toml /zeroclaw-data/.zeroclaw/config.toml
+RUN chown 65534:65534 /zeroclaw-data/.zeroclaw/config.toml
 
-# Stage 3: Runtime
-FROM gcr.io/distroless/cc-debian13:nonroot
+ENV LANG=C.UTF-8
+ENV ZEROCLAW_WORKSPACE=/zeroclaw-data/workspace
+ENV HOME=/zeroclaw-data
+ENV PROVIDER="ollama"
+ENV ZEROCLAW_MODEL="llama3.2"
+ENV ZEROCLAW_GATEWAY_PORT=42617
 
-COPY --from=builder /build/target/release/zeroclaw /usr/local/bin/zeroclaw
+WORKDIR /zeroclaw-data
+USER 65534:65534
+EXPOSE 42617
+HEALTHCHECK --interval=60s --timeout=10s --retries=3 --start-period=10s \
+    CMD ["zeroclaw", "status", "--format=exit-code"]
+ENTRYPOINT ["zeroclaw"]
+CMD ["daemon"]
+
+# ── Stage 3: Production Runtime (Distroless) ─────────────────
+FROM gcr.io/distroless/cc-debian13:nonroot@sha256:84fcd3c223b144b0cb6edc5ecc75641819842a9679a3a58fd6294bec47532bf7 AS release
+
+COPY --from=builder /app/zeroclaw /usr/local/bin/zeroclaw
 COPY --from=builder /zeroclaw-data /zeroclaw-data
 COPY --from=web-builder /web/dist /zeroclaw-data/web/dist
 
 ENV LANG=C.UTF-8
 ENV ZEROCLAW_WORKSPACE=/zeroclaw-data/workspace
 ENV HOME=/zeroclaw-data
-ENV PORT=42617
-ENV ZEROCLAW_ALLOW_PUBLIC_BIND=true
+ENV ZEROCLAW_GATEWAY_PORT=42617
 
 WORKDIR /zeroclaw-data
-USER nonroot
+USER 65534:65534
 EXPOSE 42617
-
 HEALTHCHECK --interval=30s --timeout=10s --retries=3 --start-period=30s \
-    CMD ["/usr/local/bin/zeroclaw", "status", "--format=exit-code"]
+    CMD ["zeroclaw", "status", "--format=exit-code"]
+ENTRYPOINT ["zeroclaw"]
+CMD ["daemon"]
 
-ENTRYPOINT ["/usr/local/bin/zeroclaw"]
+# ── Stage 4: Railway Runtime ────────────────────────────────
+FROM gcr.io/distroless/cc-debian13:nonroot@sha256:84fcd3c223b144b0cb6edc5ecc75641819842a9679a3a58fd6294bec47532bf7 AS railway
+
+COPY --from=builder /app/zeroclaw /usr/local/bin/zeroclaw
+COPY --from=builder /zeroclaw-data /zeroclaw-data
+COPY --from=web-builder /web/dist /zeroclaw-data/web/dist
+
+ENV LANG=C.UTF-8 \
+    ZEROCLAW_WORKSPACE=/zeroclaw-data/workspace \
+    HOME=/zeroclaw-data \
+    PORT=42617 \
+    ZEROCLAW_ALLOW_PUBLIC_BIND=true
+
+WORKDIR /zeroclaw-data
+USER 65534:65534
+EXPOSE $PORT
+HEALTHCHECK --interval=30s --timeout=10s --retries=3 --start-period=30s \
+    CMD ["zeroclaw", "status", "--format=exit-code"]
+ENTRYPOINT ["zeroclaw"]
 CMD ["daemon"]

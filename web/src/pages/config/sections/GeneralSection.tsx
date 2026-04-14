@@ -67,6 +67,13 @@ const MODELS_BY_PROVIDER: Record<string, { value: string; label: string }[]> = {
     { value: 'meta-llama/llama-4-70b', label: 'Llama 4 70B' },
     { value: 'mistralai/devstral-2', label: 'Devstral 2' },
     { value: 'qwen/qwen-3.6-plus-preview', label: 'Qwen 3.6 Plus Preview' },
+    { value: 'z-ai/glm-5.1', label: 'GLM-5.1' },
+    { value: 'arcee-ai/trinity-large-thinking', label: 'Trinity Large Thinking' },
+    { value: 'qwen/qwen3.6-plus', label: 'Qwen 3.6 Plus' },
+    { value: 'xiaomi/mimo-v2-omni', label: 'Xiaomi Mimo V2 Omni' },
+    { value: 'xiaomi/mimo-v2-pro', label: 'Xiaomi Mimo V2 Pro' },
+    { value: 'minimax/minimax-m2.7', label: 'Minimax M2.7' },
+    { value: 'minimax/minimax-m2.5:free', label: 'Minimax M2.5 (Free)' },
   ],
   anthropic: [
     { value: 'claude-sonnet-4-6', label: 'Claude Sonnet 4.6' },

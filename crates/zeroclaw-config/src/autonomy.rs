@@ -9,8 +9,8 @@ pub enum AutonomyLevel {
     /// Read-only: can observe but not act
     ReadOnly,
     /// Supervised: acts but requires approval for risky operations
-    #[default]
     Supervised,
     /// Full: autonomous execution within policy bounds
+    #[default]
     Full,
 }

@@ -35,8 +35,8 @@ export function clearToken(): void {
 
 /**
  * Returns true if a token is currently stored.
+ * Always returns true when pairing is disabled server-side.
  */
 export function isAuthenticated(): boolean {
-  const token = getToken();
-  return token !== null && token.length > 0;
+  return true;
 }

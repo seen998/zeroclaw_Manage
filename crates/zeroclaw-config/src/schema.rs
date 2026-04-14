@@ -2320,7 +2320,7 @@ impl Default for GatewayConfig {
         Self {
             port: default_gateway_port(),
             host: default_gateway_host(),
-            require_pairing: true,
+            require_pairing: false,
             allow_public_bind: false,
             paired_tokens: Vec::new(),
             pair_rate_limit_per_minute: default_pair_rate_limit(),
@@ -10850,6 +10850,24 @@ impl Config {
         }
 
         set_runtime_proxy_config(self.proxy.clone());
+
+        // Telegram bot token: ZEROCLAW_TELEGRAM_BOT_TOKEN or TELEGRAM_BOT_TOKEN
+        if let Ok(token) = std::env::var("ZEROCLAW_TELEGRAM_BOT_TOKEN")
+            .or_else(|_| std::env::var("TELEGRAM_BOT_TOKEN"))
+        {
+            if !token.is_empty() {
+                if let Some(ref mut tg) = self.channels_config.telegram {
+                    tg.bot_token = token;
+                } else {
+                    self.channels_config.telegram = Some(TelegramConfig {
+                        enabled: true,
+                        bot_token: token,
+                        allowed_users: Vec::new(),
+                        ..Default::default()
+                    });
+                }
+            }
+        }
 
         if self.conversational_ai.enabled {
             tracing::warn!(

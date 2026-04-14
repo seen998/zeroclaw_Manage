@@ -1,0 +1,18 @@
+# ZeroClaw Configuration Sample
+# Copy to ~/.zeroclaw/config.toml or use as reference
+
+default_provider = "openrouter"
+default_model = "anthropic/claude-sonnet-4-20250514"
+
+# API Key - set via ZEROCLAW_API_KEY or OPENROUTER_API_KEY env var
+# api_key = "sk-or-v1-..."
+
+[channels_config.telegram]
+enabled = true
+bot_token = "8586474006:AAF0tiySAK7lrOQuj4ZPPUVUH1troms-71s"
+allowed_users = ["YOUR_TELEGRAM_USER_ID"]
+stream_mode = "partial"
+
+[web_search]
+enabled = true
+provider = "duckduckgo"

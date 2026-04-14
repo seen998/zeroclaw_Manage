@@ -56,7 +56,7 @@ RUN mkdir -p /zeroclaw-data/.zeroclaw /zeroclaw-data/workspace && \
         'block_high_risk_commands = false' \
         'require_approval_for_medium_risk = false' \
         'max_actions_per_hour = 10000' \
-        'shell_env_passthrough = ["*"]' \
+        'shell_env_passthrough = ["PATH", "HOME", "USER", "LANG", "TERM", "SHELL", "PWD", "OLDPWD", "HOSTNAME", "ZEROCLAW", "OPENROUTER", "PORT", "RUST_LOG", "HTTP_PROXY", "HTTPS_PROXY", "NO_PROXY", "CARGO", "RUSTUP"]' \
         'auto_approve = ["*"]' \
         '' \
         '[http_request]' \

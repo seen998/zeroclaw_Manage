@@ -12,7 +12,7 @@ RUN npm run build
 FROM rust:1.94-slim@sha256:da9dab7a6b8dd428e71718402e97207bb3e54167d37b5708616050b1e8f60ed6 AS builder
 
 WORKDIR /app
-ARG ZEROCLAW_CARGO_FEATURES="channel-lark,whatsapp-web"
+ARG ZEROCLAW_CARGO_FEATURES=""
 
 # Install build dependencies
 RUN apt-get update && apt-get install -y \
@@ -31,7 +31,7 @@ RUN mkdir -p src benches apps/tauri/src \
     && echo "fn main() {}" > benches/agent_benchmarks.rs \
     && echo "fn main() {}" > apps/tauri/src/main.rs \
     && echo "fn main() {}" > apps/tauri/build.rs
-RUN cargo build --release --locked --features "$ZEROCLAW_CARGO_FEATURES"
+RUN cargo build --release --locked
 RUN rm -rf src benches
 
 # 2. Copy only build-relevant source paths
@@ -42,7 +42,7 @@ RUN touch src/main.rs
 RUN rm -rf target/release/.fingerprint/zeroclawlabs-* \
            target/release/deps/zeroclawlabs-* \
            target/release/incremental/zeroclawlabs-* && \
-    cargo build --release --locked --features "$ZEROCLAW_CARGO_FEATURES" && \
+    cargo build --release --locked && \
     cp target/release/zeroclaw /app/zeroclaw && \
     strip /app/zeroclaw
 RUN size=$(stat -c%s /app/zeroclaw) && \

@@ -139,21 +139,36 @@ COPY --from=builder /zeroclaw-data /zeroclaw-data
 COPY --from=web-builder /web/dist /zeroclaw-data/web/dist
 
 # Environment setup
-# Ensure UTF-8 locale so CJK / multibyte input is handled correctly
 ENV LANG=C.UTF-8
 ENV ZEROCLAW_WORKSPACE=/zeroclaw-data/workspace
 ENV HOME=/zeroclaw-data
-# Default provider and model are set in config.toml, not here,
-# so config file edits are not silently overridden
-#ENV PROVIDER=
 ENV ZEROCLAW_GATEWAY_PORT=42617
-
-# API_KEY must be provided at runtime!
 
 WORKDIR /zeroclaw-data
 USER 65534:65534
 EXPOSE 42617
-HEALTHCHECK --interval=60s --timeout=10s --retries=3 --start-period=10s \
+HEALTHCHECK --interval=30s --timeout=10s --retries=3 --start-period=30s \
+    CMD ["zeroclaw", "status", "--format=exit-code"]
+ENTRYPOINT ["zeroclaw"]
+CMD ["daemon"]
+
+# ── Stage 4: Railway Runtime ────────────────────────────────
+FROM gcr.io/distroless/cc-debian13:nonroot@sha256:84fcd3c223b144b0cb6edc5ecc75641819842a9679a3a58fd6294bec47532bf7 AS railway
+
+COPY --from=builder /app/zeroclaw /usr/local/bin/zeroclaw
+COPY --from=builder /zeroclaw-data /zeroclaw-data
+COPY --from=web-builder /web/dist /zeroclaw-data/web/dist
+
+ENV LANG=C.UTF-8 \
+    ZEROCLAW_WORKSPACE=/zeroclaw-data/workspace \
+    HOME=/zeroclaw-data \
+    PORT=42617 \
+    ZEROCLAW_ALLOW_PUBLIC_BIND=true
+
+WORKDIR /zeroclaw-data
+USER 65534:65534
+EXPOSE $PORT
+HEALTHCHECK --interval=30s --timeout=10s --retries=3 --start-period=30s \
     CMD ["zeroclaw", "status", "--format=exit-code"]
 ENTRYPOINT ["zeroclaw"]
 CMD ["daemon"]

@@ -22,6 +22,11 @@ RUN apt-get update && apt-get install -y \
 # Copy ALL source at once
 COPY . .
 
+# Create stub files for apps/tauri (excluded by .dockerignore but needed for workspace resolution)
+RUN mkdir -p apps/tauri/src && \
+    echo 'fn main() {}' > apps/tauri/src/main.rs && \
+    echo 'fn main() {}' > apps/tauri/build.rs
+
 # Build with agent-runtime feature (includes telegram + all core channels)
 RUN cargo build --release --locked --features "agent-runtime" && \
     cp target/release/zeroclaw /app/zeroclaw-bin && \
